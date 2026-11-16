@@ -450,7 +450,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 code, pre, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .cat-warm { --cat: var(--p-butter); --bar: var(--b-butter); } .cat-arr { --cat: var(--p-sky); --bar: var(--b-sky); } .cat-2d { --cat: var(--p-mint); --bar: var(--b-mint); } .cat-str { --cat: var(--p-peach); --bar: var(--b-peach); }
-.cat-list { --cat: var(--p-lav); --bar: var(--b-lav); } .cat-dbg { --cat: var(--p-rose); --bar: var(--b-rose); } .cat-chal { --cat: var(--p-orchid); --bar: var(--b-orchid); }
+.cat-list { --cat: var(--p-lav); --bar: var(--b-lav); } .cat-hurdle { --cat: var(--hurdle-bg); } .cat-dbg { --cat: var(--p-rose); --bar: var(--b-rose); } .cat-chal { --cat: var(--p-orchid); --bar: var(--b-orchid); }
 
 /* ---------- top bar */
 .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--nav-bg); color: var(--nav-fg); border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 var(--line); }
@@ -1521,12 +1521,16 @@ mark.hl-user.flash { outline: 3px solid var(--focus); outline-offset: 2px; }
   });
 
   // ---------------------------------------------------------------- practice
-  var practiceFilter = 'All', levelFilter = 'All', onlyPredicted = false, hideSolved = false, onlyStarred = false, onlyWeng = false;
+  var practiceFilter = 'All', levelFilter = 'All', onlyPredicted = false, hideSolved = false, onlyStarred = false, onlyWeng = false, hurdleFilter = 'All';
+  function hurdleKind(p) { return !/hurdle/i.test(p.mirrors) ? 'None' : p.category === 'Linked Lists' ? 'List' : 'Array'; }
+  var HURDLE_OPTS = [['All', 'Any type'], ['Any', 'All hurdles'], ['Array', 'Array hurdles'], ['List', 'List hurdles'], ['None', 'Non-hurdle']];
   function renderPractice() {
     document.title = 'Practice · Hurdle';
-    function match(p, cat, lvl) { return (cat === 'All' || p.category === cat) && (lvl === 'All' || p.difficulty === lvl) && (!onlyPredicted || PREDICTED[p.id]) && (!hideSolved || !S.solved[p.id]) && (!onlyStarred || S.starred[p.id]) && (!onlyWeng || p.weng); }
+    function hurdleOk(p, h) { var k = hurdleKind(p); return h === 'All' || (h === 'Any' ? k !== 'None' : k === h); }
+    function match(p, cat, lvl, hf) { return (cat === 'All' || p.category === cat) && (lvl === 'All' || p.difficulty === lvl) && hurdleOk(p, hf === undefined ? hurdleFilter : hf) && (!onlyPredicted || PREDICTED[p.id]) && (!hideSolved || !S.solved[p.id]) && (!onlyStarred || S.starred[p.id]) && (!onlyWeng || p.weng); }
     var chips = ['All'].concat(CATS).map(function (c) { var n = PROBLEMS.filter(function (p) { return match(p, c, levelFilter); }).length; return '<button class="chip ' + (CAT_CLASS[c] || '') + (c === practiceFilter ? ' on' : '') + '" data-c="' + esc(c) + '" aria-pressed="' + (c === practiceFilter) + '">' + esc(c) + ' <span class="num">' + n + '</span></button>'; }).join('');
     var lv = ['All', 'Easy', 'Medium', 'Hard'].map(function (l) { var n = PROBLEMS.filter(function (p) { return match(p, practiceFilter, l); }).length; return '<button class="chip' + (l === levelFilter ? ' on' : '') + '" data-l="' + l + '" aria-pressed="' + (l === levelFilter) + '">' + (l === 'All' ? 'Any level' : l) + ' <span class="num">' + n + '</span></button>'; }).join('');
+    var hc = HURDLE_OPTS.map(function (o) { var n = PROBLEMS.filter(function (p) { return match(p, practiceFilter, levelFilter, o[0]); }).length; return '<button class="chip' + (o[0] !== 'All' && o[0] !== 'None' ? ' cat-hurdle' : '') + (o[0] === hurdleFilter ? ' on' : '') + '" data-h="' + o[0] + '" aria-pressed="' + (o[0] === hurdleFilter) + '">' + o[1] + ' <span class="num">' + n + '</span></button>'; }).join('');
     var nPred = PROBLEMS.filter(function (p) { return PREDICTED[p.id]; }).length;
     var nStar = PROBLEMS.filter(function (p) { return S.starred[p.id]; }).length;
     var ex = '<button class="chip cat-str' + (onlyStarred ? ' on' : '') + '" id="starChip" aria-pressed="' + onlyStarred + '">&#9733; My starred <span class="num">' + nStar + '</span></button>';
@@ -1537,15 +1541,16 @@ mark.hl-user.flash { outline: 3px solid var(--focus); outline-offset: 2px; }
     var rows = list.map(function (p) {
       var st = S.solved[p.id] ? '<span class="st ac" title="Solved">&#10003;</span>' : S.tried[p.id] ? '<span class="st tried" title="Attempted"></span>' : '<span class="st none" title="Not attempted"></span>';
       var best = S.best[p.id] !== undefined && !S.solved[p.id] ? ' <span class="num">' + Math.round(S.best[p.id] * 100) + '%</span>' : '';
-      var hurdle = /hurdle/.test(p.mirrors) ? ' <span class="tag hurdle">hurdle</span>' : '';
+      var hurdle = /hurdle/i.test(p.mirrors) ? ' <span class="tag hurdle">hurdle</span>' : '';
       var pred = PREDICTED[p.id] ? ' <span class="tag pred" title="Closest to the expected exam questions">&#9670; predicted</span>' : '';
       return '<tr><td class="stc">' + starBtn(p.id) + st + '</td><td><a class="t" href="#' + hashOf(p.id) + '">' + esc(p.title) + '</a>' + best + pred + '<div class="code-id">' + esc(p.id) + '</div></td><td>' + catTag(p.category) + '</td><td class="diff-' + p.difficulty + '">' + p.difficulty + '</td><td>' + esc(p.mirrors) + hurdle + '</td><td class="num">' + p.minutes + ' min</td><td class="num">' + p.tests.length + '</td></tr>';
     }).join('');
     var empty = onlyStarred && !nStar ? 'You have not starred any problems yet. Tap the &#9734; next to a problem to save it here.' : 'No problems match these filters.';
-    view.innerHTML = '<h1>Practice</h1><p class="lede">' + PROBLEMS.length + ' problems. Each one is judged on every test case, like CodeChef. Submit until you see Accepted. Star (&#9734;) the problems you want to come back to; the WENG1000 chip shows the problems written in the exact Lec10/11 exam style.</p><div class="chips" id="chips">' + chips + '</div><div class="chips" id="lchips">' + lv + '</div><div class="chips" id="xchips">' + ex + '</div>' +
+    view.innerHTML = '<h1>Practice</h1><p class="lede">' + PROBLEMS.length + ' problems. Each one is judged on every test case, like CodeChef. Submit until you see Accepted. Use the hurdle row to practise only array or linked list hurdles. Star (&#9734;) the problems you want to come back to; the WENG1000 chip shows the problems written in the exact Lec10/11 exam style.</p><div class="chips" id="chips">' + chips + '</div><div class="chips" id="lchips">' + lv + '</div><div class="chips" id="hchips" role="group" aria-label="Hurdle filter">' + hc + '</div><div class="chips" id="xchips">' + ex + '</div>' +
       '<div class="table-wrap"><table class="probs"><thead><tr><th style="width:70px"><span class="sr">Star and status</span></th><th>Problem</th><th>Topic</th><th>Level</th><th>Exam match</th><th>Target</th><th>Tests</th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="empty">' + empty + '</td></tr>') + '</tbody></table></div><p class="small muted" style="margin-top:10px">Showing ' + list.length + ' of ' + PROBLEMS.length + '.</p>';
     $all('#chips .chip').forEach(function (b) { b.addEventListener('click', function () { practiceFilter = b.getAttribute('data-c'); renderPractice(); }); });
     $all('#lchips [data-l]').forEach(function (b) { b.addEventListener('click', function () { levelFilter = b.getAttribute('data-l'); renderPractice(); }); });
+    $all('#hchips [data-h]').forEach(function (b) { b.addEventListener('click', function () { hurdleFilter = b.getAttribute('data-h'); renderPractice(); }); });
     $('#predChip').addEventListener('click', function () { onlyPredicted = !onlyPredicted; renderPractice(); });
     $('#unsolvedChip').addEventListener('click', function () { hideSolved = !hideSolved; renderPractice(); });
     $('#starChip').addEventListener('click', function () { onlyStarred = !onlyStarred; renderPractice(); });
