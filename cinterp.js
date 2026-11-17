@@ -141,7 +141,7 @@
   }
 
   // ------------------------------------------------------------------ preprocessor
-  var HEADER_OK = { 'stdio.h': 1, 'stdlib.h': 1, 'string.h': 1, 'ctype.h': 1, 'math.h': 1, 'assert.h': 1, 'stdbool.h': 1, 'limits.h': 1, 'time.h': 1, 'stddef.h': 1, 'stdint.h': 1, 'float.h': 1, 'unistd.h': 1, 'errno.h': 1 };
+  var HEADER_OK = { 'stdio.h': 1, 'stdlib.h': 1, 'string.h': 1, 'ctype.h': 1, 'math.h': 1, 'assert.h': 1, 'stdbool.h': 1, 'limits.h': 1, 'time.h': 1, 'stddef.h': 1, 'stdint.h': 1, 'float.h': 1, 'unistd.h': 1, 'errno.h': 1, 'strings.h': 1 };
 
   function preprocess(toks) {
     var includes = {};
@@ -839,7 +839,7 @@
 
   var buf, DV, U8, IB, SH, R_START, R_END, R_KIND, R_LINE, R_DESC, R_FREEDLINE, R_RO, R_TYPE;
   var nRegions, freeStackIds, gTop, sTop, hTop;
-  var LINE, STEPS, STEP_LIMIT, OUT, ERR, INPUT, INPOS, OUT_LIMIT, CALL_DEPTH, RETV, FP, SRC_LINES, RAND_STATE;
+  var LINE, STEPS, STEP_LIMIT, OUT, ERR, INPUT, INPOS, OUT_LIMIT, CALL_DEPTH, RETV, FP, SRC_LINES, RAND_STATE, STRTOK;
 
   function resetMachine() {
     if (!buf) {
@@ -851,7 +851,7 @@
     R_START = [0]; R_END = [0]; R_KIND = ['']; R_LINE = [0]; R_DESC = ['']; R_FREEDLINE = [0]; R_RO = [0]; R_TYPE = [null];
     nRegions = 1; freeStackIds = [];
     gTop = GLOBAL_BASE; sTop = STACK_BASE; hTop = HEAP_BASE;
-    STEPS = 0; OUT = []; ERR = []; INPOS = 0; CALL_DEPTH = 0; RETV = 0; FP = STACK_BASE; RAND_STATE = 1;
+    STEPS = 0; OUT = []; ERR = []; INPOS = 0; CALL_DEPTH = 0; RETV = 0; FP = STACK_BASE; RAND_STATE = 1; STRTOK = 0;
   }
 
   function rt(msg) { throw new CError('runtime', msg, LINE, 0); }
@@ -2211,6 +2211,25 @@
   def('string.h', 'memset', tVoidP, [tVoidP, tInt, tULong], function (a) { var n = a[2].v; if (n > 0) { chk(a[0].v, n, 1); U8.fill(a[1].v & 255, a[0].v, a[0].v + n); IB.fill(1, a[0].v, a[0].v + n); } return a[0].v; });
   def('string.h', 'memcpy', tVoidP, [tVoidP, tVoidP, tULong], function (a) { memcopy(a[0].v, a[1].v, a[2].v); return a[0].v; });
   def('string.h', 'memmove', tVoidP, [tVoidP, tVoidP, tULong], function (a) { memcopy(a[0].v, a[1].v, a[2].v); return a[0].v; });
+  def('string.h', 'strpbrk', tCharP, [tCharP, tCharP], function (a) { var s = cstrArg(a, 0, 'strpbrk'), r = cstrArg(a, 1, 'strpbrk'); for (var i = 0; i < s.length; i++) if (r.indexOf(s[i]) >= 0) return a[0].v + i; return 0; });
+  def('string.h', 'memchr', tVoidP, [tVoidP, tInt, tULong], function (a) { var n = a[2].v, c = a[1].v & 255; if (n > 0) chk(a[0].v, n, 0); for (var i = 0; i < n; i++) if (U8[a[0].v + i] === c) return a[0].v + i; return 0; });
+  function dupStr(b) { var p = heapAlloc(b.length + 1, false); if (p) writeBytes(p, b.concat([0]), 'strdup'); return p; }
+  def('string.h', 'strdup', tCharP, [tCharP], function (a) { return dupStr(cstrArg(a, 0, 'strdup')); });
+  def('string.h', 'strndup', tCharP, [tCharP, tULong], function (a) { return dupStr(cstrArg(a, 0, 'strndup').slice(0, a[1].v)); });
+  // strtok keeps its position between calls, like the real one
+  def('string.h', 'strtok', tCharP, [tCharP, tCharP], function (a) {
+    var p = a[0].v !== 0 ? a[0].v : STRTOK;
+    if (p === 0) return 0;
+    var d = cstrArg(a, 1, 'strtok'), s = readCStr(p, 'strtok'), i = 0;
+    while (i < s.length && d.indexOf(s[i]) >= 0) i++;
+    if (i === s.length) { STRTOK = 0; return 0; }
+    var j = i; while (j < s.length && d.indexOf(s[j]) < 0) j++;
+    if (j < s.length) { writeBytes(p + j, [0], 'strtok'); STRTOK = p + j + 1; } else STRTOK = 0;
+    return p + i;
+  });
+  function lowB(b) { return b.map(function (c) { return c >= 65 && c <= 90 ? c + 32 : c; }); }
+  def('strings.h', 'strcasecmp', tInt, [tCharP, tCharP], function (a) { var x = lowB(cstrArg(a, 0, 'strcasecmp')), y = lowB(cstrArg(a, 1, 'strcasecmp')); return cmpBytes(x, y, Math.max(x.length, y.length) + 1); });
+  def('strings.h', 'strncasecmp', tInt, [tCharP, tCharP, tULong], function (a) { return cmpBytes(lowB(cstrArg(a, 0, 'strncasecmp')), lowB(cstrArg(a, 1, 'strncasecmp')), a[2].v); });
   def('string.h', 'memcmp', tInt, [tVoidP, tVoidP, tULong], function (a) { var n = a[2].v; chk(a[0].v, n, 0); chk(a[1].v, n, 0); for (var i = 0; i < n; i++) { var x = U8[a[0].v + i], y = U8[a[1].v + i]; if (x !== y) return x < y ? -1 : 1; } return 0; });
 
   function ctype(name, f) { def('ctype.h', name, tInt, [tInt], function (a) { var c = a[0].v; if (c === -1) return 0; if (c < -128 || c > 255) rt(name + ': value ' + c + ' is not a character'); return f(c & 255) ? 1 : 0; }); }
